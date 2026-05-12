@@ -1,49 +1,36 @@
 # Installing hermes-recipes into Hermes Agent
 
-This package registers itself as a Hermes plugin via the `hermes_agent.plugins`
-entry-point group. After installing into the Hermes venv, Hermes's plugin
-loader discovers it automatically — there's no `~/.hermes/plugins/`
-directory to manage.
-
-## Prerequisites
-
-- Hermes Agent installed (`curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`)
-- The Hermes Python venv reachable on disk (usually `~/.hermes/venv/`)
-
-## Install
-
-### 1. Drop the package into the Hermes venv
-
-From a checkout of this repo:
+`hermes-recipes` is a Python package. After installing into the Hermes venv it
+registers a `hermes recipes` CLI tree via the `hermes_agent.plugins` entry
+point. End-to-end smoke (validated 2026-05-12 against Hermes v0.13.0):
 
 ```bash
-~/.hermes/venv/bin/pip install /path/to/hermes-recipes
+hermes recipes --workspace-root /tmp/test dispatch \
+    --team-id dev-team --request "Add a new clinic-team recipe" --owner lead
+hermes recipes --workspace-root /tmp/test tickets --team-id dev-team --json
+hermes recipes --workspace-root /tmp/test take     --team-id dev-team --ticket 1 --owner dev
+hermes recipes --workspace-root /tmp/test handoff  --team-id dev-team --ticket 1
+hermes recipes --workspace-root /tmp/test complete --team-id dev-team --ticket 1
 ```
 
-For development (editable install — picks up edits without reinstalling):
+…lands a ticket in `workspace-dev-team/work/done/0001-….md` with
+`Status: done` and a `Completed:` timestamp.
+
+There are two install paths. Pick one.
+
+---
+
+## Method A — Pip install (entry-point discovery)
+
+**Best for:** most users. One command, no manual file management.
 
 ```bash
+~/.hermes/venv/bin/pip install hermes-recipes      # production
+# — or, for development —
 ~/.hermes/venv/bin/pip install -e /path/to/hermes-recipes
 ```
 
-Verify the entry point landed:
-
-```bash
-~/.hermes/venv/bin/python -c '
-import importlib.metadata as md
-eps = md.entry_points()
-group = eps.select(group="hermes_agent.plugins") if hasattr(eps, "select") else []
-for ep in group:
-    print(f"  {ep.name} = {ep.value}")
-'
-```
-
-You should see `hermes_recipes = hermes_recipes`.
-
-### 2. Enable the plugin
-
-Hermes plugins are **opt-in by default**. Add `hermes_recipes` to the
-`plugins.enabled` array in `~/.hermes/config.yaml`:
+Then enable the plugin by adding it to `~/.hermes/config.yaml`:
 
 ```yaml
 plugins:
@@ -51,107 +38,173 @@ plugins:
     - hermes_recipes
 ```
 
-> **Gotcha:** As of Hermes v0.13.0, `hermes plugins enable hermes_recipes`
-> fails with *"Plugin 'hermes_recipes' is not installed or bundled."* and
-> `hermes plugins list` does **not** show entry-point plugins — both of those
-> CLI commands only walk the directory-plugin source. The runtime plugin
-> loader DOES see entry-point plugins; you just have to edit
-> `~/.hermes/config.yaml` by hand to enable yours.
-
-### 3. Verify the plugin loaded
-
-`hermes plugins list` won't display entry-point plugins (see gotcha above),
-so probe it directly via the CLI surface it registered:
+Verify the plugin loaded:
 
 ```bash
 hermes recipes --help
 ```
 
-If you see the `recipes` action-tree, the plugin loaded successfully. If
-argparse rejects `recipes` as an "invalid choice", `plugins.enabled` doesn't
-include `hermes_recipes` (or the pip install didn't land in Hermes's venv).
+If you see the `recipes` action tree, you're done. If argparse rejects
+`recipes` as an "invalid choice", `plugins.enabled` doesn't include
+`hermes_recipes` (or the pip install didn't land in Hermes's venv — see
+*Troubleshooting* below).
 
-### 4. Flag ordering
+### Why edit config.yaml by hand?
 
-The `--workspace-root` and `--recipes-dir` flags belong to the `recipes`
-sub-parser, so they go **between** `recipes` and the action verb:
+Hermes v0.13.0's `hermes plugins list` and `hermes plugins enable` only
+discover **directory plugins** (files under `~/.hermes/plugins/`). The
+runtime plugin loader DOES see pip entry-point plugins fine — but those
+two CLI commands won't surface them. So with Method A:
 
-```bash
-hermes recipes --workspace-root ~/work/team-x tickets --team-id dev-team
-```
+- `hermes plugins list` → won't show `hermes_recipes` (UI gap)
+- `hermes plugins enable hermes_recipes` → fails with "not installed or bundled" (UI gap)
+- `hermes recipes …` → **works** (runtime sees it)
 
-Putting `--workspace-root` after the action verb (`tickets`) makes argparse
-treat it as an unrecognized top-level arg.
+Either edit `config.yaml` directly, or use Method B below to also get the
+nice CLI surface.
 
-### 5. Use the CLI
+---
 
-```bash
-hermes recipes tickets --team-id dev-team
-hermes recipes dispatch --team-id dev-team --request "Add a new clinic-team recipe"
-hermes recipes scaffold-team --recipe-id development-team --team-id dev-team \
-    --provision-profiles --install-cron on
-```
+## Method B — Pip install + directory-plugin shim
 
-The default workspace root is `~/.hermes/recipes/workspace/`. Override with
-`hermes recipes --workspace-root /some/path <action> …` for testing.
-
-## End-to-end smoke (validated 2026-05-12, Hermes v0.13.0)
+**Best for:** users who want `hermes plugins list` / `hermes plugins enable`
+to work normally. Adds a 2-file shim under `~/.hermes/plugins/` that points
+at the pip-installed package.
 
 ```bash
-hermes recipes --workspace-root /tmp/test-ws dispatch \
-    --team-id dev-team --request "Add a new clinic-team recipe" --owner lead
-hermes recipes --workspace-root /tmp/test-ws tickets --team-id dev-team --json
-hermes recipes --workspace-root /tmp/test-ws take     --team-id dev-team --ticket 1 --owner dev
-hermes recipes --workspace-root /tmp/test-ws handoff  --team-id dev-team --ticket 1
-hermes recipes --workspace-root /tmp/test-ws complete --team-id dev-team --ticket 1
+# 1. Same pip install as Method A
+~/.hermes/venv/bin/pip install hermes-recipes
+
+# 2. Drop the shim
+/path/to/hermes-recipes/scripts/install_dir_plugin.sh
+
+# 3. Enable via the normal CLI
+hermes plugins enable hermes_recipes
+
+# 4. Verify
+hermes plugins list                # hermes_recipes appears, status=enabled
+hermes recipes --help
 ```
 
-…lands a ticket in `workspace-dev-team/work/done/0001-add-a-new-clinic-team-recipe.md`
-with `Status: done` and a `Completed:` timestamp.
+The shim creates exactly two files under `~/.hermes/plugins/hermes_recipes/`:
 
-## Uninstall
+- `plugin.yaml` — copy of the package's manifest
+- `__init__.py` — one-line `from hermes_recipes import register` shim
+
+The package itself stays in Hermes's venv site-packages — the shim just
+makes Hermes's directory scanner notice it.
+
+To remove the shim:
+
+```bash
+/path/to/hermes-recipes/scripts/install_dir_plugin.sh --uninstall
+```
+
+(Or `rm -rf ~/.hermes/plugins/hermes_recipes/`.)
+
+To uninstall the package itself:
 
 ```bash
 ~/.hermes/venv/bin/pip uninstall hermes-recipes
 ```
 
-…and remove `hermes_recipes` from `plugins.enabled` in `~/.hermes/config.yaml`.
+### Why this isn't pure "drop files in a folder"
+
+A pure-directory install (no pip) would require copying the entire
+`hermes_recipes/` package into `~/.hermes/plugins/hermes_recipes/`. That
+works for simple plugins, but ours uses absolute imports
+(`from hermes_recipes.tickets import …`) and depends on PyYAML 6+ being
+present. Pip handles both — the directory shim is the lightest reliable
+hand-off.
+
+---
+
+## Comparison
+
+| Property | Method A (pip + config edit) | Method B (pip + dir shim) |
+|---|---|---|
+| Steps after `pip install` | edit `config.yaml` | run `install_dir_plugin.sh` + `hermes plugins enable` |
+| `hermes plugins list` shows it | ❌ | ✅ |
+| `hermes plugins enable` works | ❌ | ✅ |
+| `hermes plugins disable` works | ❌ (delete from config) | ✅ |
+| `hermes recipes …` works | ✅ | ✅ |
+| Manages dependencies | ✅ (via pip) | ✅ (via pip) |
+| Survives `~/.hermes/` reset | ✅ | ❌ (re-run install script) |
+| Survives venv rebuild | ❌ (re-pip-install) | ❌ (both) |
+
+**Recommendation:** use Method A if you live in `config.yaml` anyway. Use
+Method B if you want the plugin to look first-class to Hermes's CLI.
+
+---
+
+## Use the CLI
+
+```bash
+hermes recipes tickets --team-id dev-team
+hermes recipes --workspace-root /custom/path dispatch --team-id dev-team --request "…"
+hermes recipes scaffold-team --recipe-id development-team --team-id dev-team \
+    --provision-profiles --install-cron on
+```
+
+Note the **flag ordering**: `--workspace-root` and `--recipes-dir` belong to
+the `recipes` sub-parser, so they go *between* `recipes` and the action
+verb:
+
+```bash
+hermes recipes --workspace-root ~/work tickets --team-id dev-team   # ✓
+hermes recipes tickets --workspace-root ~/work --team-id dev-team   # ✗ argparse error
+```
+
+The default workspace root is `~/.hermes/recipes/workspace/`.
+
+---
 
 ## Troubleshooting
 
-**`hermes plugins list` doesn't show `hermes_recipes`.**
-Make sure you installed into the *Hermes* venv, not your shell's default
-Python. `which hermes` + `head -1 $(which hermes)` typically points at the
-interpreter Hermes is using.
+**`hermes recipes` returns "invalid choice" / "command not found".**
+The plugin loaded but the runtime never imported it. Check:
 
-**`hermes recipes ...` returns "command not found" / argparse rejects the
-subcommand.**
-The plugin loaded but the CLI registration didn't run. Set
-`HERMES_PLUGINS_DEBUG=1 hermes plugins list` to see why — most often it
-means the plugin is discovered but not in `plugins.enabled`.
+1. `pip list | grep hermes-recipes` inside the Hermes venv — confirms install
+2. `plugins.enabled` in `~/.hermes/config.yaml` includes `hermes_recipes`
+3. `python -c 'from hermes_recipes import register; print(register)'` from
+   the Hermes venv interpreter — confirms importability
+
+**`pip install` succeeded but Hermes still doesn't see the plugin.**
+Most often the install went into your shell's default Python rather than
+Hermes's venv. Run:
+
+```bash
+head -1 $(which hermes)
+```
+
+…to find Hermes's interpreter, then use *that* pip explicitly:
+
+```bash
+$(head -1 $(which hermes) | sed 's|^#!||') -m pip install hermes-recipes
+```
 
 **Cron reconciliation errors with "hermes_agent.cron.jobs is not importable".**
-You're running outside the Hermes venv (so the `cron.jobs` module isn't on the
-path) or the Hermes install is older than the cron API surface we target. Run
-with `--install-cron off` for now and report the version mismatch.
+You're running outside the Hermes venv, or the Hermes install is older
+than the cron API surface we target. Run with `--install-cron off` for
+now and report the version mismatch.
 
 **Profile provisioning fails with "command not found: hermes".**
-Either `hermes` is not on `$PATH` for the user running scaffolds, or you're
-inside a sandbox that's hiding it. Set the `hermes` binary path explicitly by
-running the scaffold command in a shell that has Hermes in `$PATH`.
+The `hermes` binary isn't on `$PATH` for the user running scaffolds. Add
+it to `$PATH` or run scaffolds from a shell that already has it.
 
-## Alternative: directory plugin (advanced)
+**End-to-end smoke** that exercises everything Phase 6 ships (validated
+2026-05-12, Hermes v0.13.0):
 
-If you can't `pip install` into the Hermes venv (read-only filesystem,
-sandboxed install, etc.), you can drop a directory plugin under
-`~/.hermes/plugins/hermes_recipes/`:
+```bash
+export HERMES_HOME=/tmp/test-hermes-home && mkdir -p $HERMES_HOME
 
-1. Copy the entire `hermes_recipes/` package directory there.
-2. Copy `plugin.yaml` alongside it (so it lives at
-   `~/.hermes/plugins/hermes_recipes/plugin.yaml`).
-3. Add `hermes_recipes` to `plugins.enabled` in `~/.hermes/config.yaml`.
+hermes recipes --workspace-root $HERMES_HOME/ws dispatch \
+    --team-id dev-team --request "Add a new clinic-team recipe" --owner lead
+hermes recipes --workspace-root $HERMES_HOME/ws tickets --team-id dev-team --json
+hermes recipes --workspace-root $HERMES_HOME/ws take     --team-id dev-team --ticket 1 --owner dev
+hermes recipes --workspace-root $HERMES_HOME/ws handoff  --team-id dev-team --ticket 1
+hermes recipes --workspace-root $HERMES_HOME/ws complete --team-id dev-team --ticket 1
 
-This path requires the same Python dependencies (PyYAML 6+) to be present in
-whatever interpreter Hermes uses. It's identical to the pip path at runtime;
-the entry-point install is preferred because pip handles the dependency
-install for you.
+ls $HERMES_HOME/workspace-dev-team/work/done/
+# expected: 0001-add-a-new-clinic-team-recipe.md (Status: done, Completed: <iso>)
+```

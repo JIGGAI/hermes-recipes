@@ -49,20 +49,28 @@ hermes-recipes/
 
 ## Install (into a real Hermes Agent)
 
-The package registers itself as a Hermes plugin via the `hermes_agent.plugins`
-entry-point group. After installing into the Hermes venv, Hermes's plugin
-loader discovers it automatically.
+Two install paths — pick one. Both validated end-to-end against Hermes
+v0.13.0.
+
+**Method A — pip + config edit** (simplest):
 
 ```bash
 ~/.hermes/venv/bin/pip install /path/to/hermes-recipes
-hermes plugins enable hermes_recipes      # plugins are opt-in
-hermes plugins list                       # confirm `hermes_recipes` appears
-hermes recipes tickets --team-id dev-team # smoke-test the CLI
+# add hermes_recipes to plugins.enabled in ~/.hermes/config.yaml
+hermes recipes --help
 ```
 
-See [`docs/INSTALL.md`](docs/INSTALL.md) for the full install steps,
-verification commands, troubleshooting, and an alternative directory-plugin
-path for sandboxed installs.
+**Method B — pip + directory-plugin shim** (so `hermes plugins list` shows it):
+
+```bash
+~/.hermes/venv/bin/pip install /path/to/hermes-recipes
+/path/to/hermes-recipes/scripts/install_dir_plugin.sh
+hermes plugins enable hermes_recipes
+hermes recipes --help
+```
+
+See [`docs/INSTALL.md`](docs/INSTALL.md) for the full comparison,
+troubleshooting, and the end-to-end smoke test.
 
 ## Develop
 

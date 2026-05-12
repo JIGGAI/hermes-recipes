@@ -5,6 +5,30 @@ All notable changes to **hermes-recipes** will be documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-05-12
+
+Docs + tooling polish. Same code surface as 0.2.0; the package now ships
+a second install path that makes `hermes plugins list` / `hermes plugins
+enable` work without manual `config.yaml` edits.
+
+### Added
+
+- **`scripts/install_dir_plugin.sh`** — drops a 2-file directory-plugin
+  shim under `~/.hermes/plugins/hermes_recipes/` so Hermes's CLI surfaces
+  the plugin like any bundled one. `--uninstall` removes the shim
+  cleanly.
+- **`docs/INSTALL.md` rewrite.** Leads with the validated smoke test,
+  then documents both install paths (Method A: pip + config edit;
+  Method B: pip + directory-plugin shim) with a comparison table.
+- **`plugin.yaml`** bumped to 0.2.1 to match `pyproject.toml`.
+
+### Fixed
+
+- Doc framing in v0.2.0 lead with the *gotcha* about `hermes plugins
+  enable` failing, which read as "the plugin doesn't work". It does — the
+  gotcha is a Hermes UX gap around entry-point plugins. Method B above
+  routes around it entirely.
+
 ## [0.2.0] — 2026-05-12
 
 The package now installs as a real Hermes plugin and the file-first ticket +
@@ -49,15 +73,11 @@ for the copy-pasteable smoke commands.
 - **Workflow node execution is not implemented yet.** The runner enqueues
   tasks onto per-agent JSON queues; nothing consumes them. The worker +
   node executor is Phase 4c on the roadmap.
-- **`hermes plugins enable hermes_recipes` does not work.** Hermes v0.13.0's
-  `plugins enable` / `plugins list` commands only walk directory plugins,
-  not entry-point plugins. The runtime loader DOES see entry-point plugins
-  — workaround is editing `~/.hermes/config.yaml` directly:
-  ```yaml
-  plugins:
-    enabled:
-      - hermes_recipes
-  ```
+- **`hermes plugins enable hermes_recipes` does not work** on the pure-pip
+  install path. Hermes v0.13.0's `plugins enable` / `plugins list` only
+  walk directory plugins, not entry-point plugins. Two workarounds:
+  edit `~/.hermes/config.yaml` directly, or use the directory-shim
+  install (`scripts/install_dir_plugin.sh`, added in 0.2.1).
 - **4 media drivers deferred.** NanoBananaPro, RunwayVideo, KlingVideo,
   LumaVideo. Same pattern as `openai_image_gen.py`; trivial to add when
   needed.
