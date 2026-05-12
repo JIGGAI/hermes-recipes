@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-recipes"
+version = "0.2.0"
+description = "Markdown recipes that scaffold agents, teams, and file-first workflows on Hermes Agent. Port of @jiggai/recipes (ClawRecipes)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ClawRecipes contributors" }]
+keywords = ["hermes", "hermes-agent", "agents", "teams", "recipes", "workflow", "clawrecipes"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "pyyaml>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.0.2,<10",
+  "pytest-asyncio>=1.3.0,<2",
+  "ruff",
+]
+
+# Hermes Agent plugin discovery — `pip install hermes-recipes` into the Hermes
+# venv registers this entry point. Hermes's plugin loader walks
+# entry_points(group="hermes_agent.plugins") and calls ``hermes_recipes.register``
+# on startup. No `~/.hermes/plugins/hermes_recipes/` directory is required.
+[project.entry-points."hermes_agent.plugins"]
+hermes_recipes = "hermes_recipes"
+
+[tool.setuptools.packages.find]
+include = ["hermes_recipes*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
