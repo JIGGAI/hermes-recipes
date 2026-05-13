@@ -100,19 +100,29 @@ _TEAM_RECIPE = {
         {"role": "dev", "name": "Dev"},
         {"role": "test", "name": "Test"},
     ],
+    # Per-role files use bare template names ("soul", "agents", "tools") and
+    # get scaffold_team_from_recipe to look them up as "<role>.soul" etc.
+    # Team-level files (shared-context/, notes/) use explicit dotted names so
+    # they're not role-prefixed.
     "templates": {
-        "soul": "# SOUL — {{agentName}} ({{role}})\nteam: {{teamId}}\n",
-        "agents": "# AGENTS — {{agentName}}\n",
-        "tools": "# TOOLS — {{agentName}}\n",
-        "shared-context": "# shared-context — {{teamId}}\n",
-        "notes": "# notes — {{teamId}}\n",
+        "lead.soul": "# SOUL — {{agentName}} ({{role}})\nteam: {{teamId}}\n",
+        "dev.soul": "# SOUL — {{agentName}} ({{role}})\nteam: {{teamId}}\n",
+        "test.soul": "# SOUL — {{agentName}} ({{role}})\nteam: {{teamId}}\n",
+        "lead.agents": "# AGENTS — {{agentName}}\n",
+        "dev.agents": "# AGENTS — {{agentName}}\n",
+        "test.agents": "# AGENTS — {{agentName}}\n",
+        "lead.tools": "# TOOLS — {{agentName}}\n",
+        "dev.tools": "# TOOLS — {{agentName}}\n",
+        "test.tools": "# TOOLS — {{agentName}}\n",
+        "sharedContext.overview": "# shared-context — {{teamId}}\n",
+        "sharedContext.notes": "# notes — {{teamId}}\n",
     },
     "files": [
         {"path": "SOUL.md", "template": "soul"},
         {"path": "AGENTS.md", "template": "agents"},
         {"path": "TOOLS.md", "template": "tools"},
-        {"path": "shared-context/team-overview.md", "template": "shared-context"},
-        {"path": "notes/team-overview.md", "template": "notes"},
+        {"path": "shared-context/team-overview.md", "template": "sharedContext.overview"},
+        {"path": "notes/team-overview.md", "template": "sharedContext.notes"},
     ],
     "cronJobs": [
         {"id": "loop", "schedule": "*/30 * * * *", "message": "ping"},

@@ -160,9 +160,15 @@ def test_scaffold_team_lays_out_per_role_dirs_and_provisions_profiles(
                 {"role": "test"},
             ],
             "templates": {
-                "soul": "# SOUL — {{agentName}} ({{role}})\n",
-                "agents": "# AGENTS — {{agentName}}\n",
-                "tools": "# TOOLS — {{agentName}}\n",
+                "lead.soul": "# SOUL — {{agentName}} ({{role}})\n",
+                "dev.soul": "# SOUL — {{agentName}} ({{role}})\n",
+                "test.soul": "# SOUL — {{agentName}} ({{role}})\n",
+                "lead.agents": "# AGENTS — {{agentName}}\n",
+                "dev.agents": "# AGENTS — {{agentName}}\n",
+                "test.agents": "# AGENTS — {{agentName}}\n",
+                "lead.tools": "# TOOLS — {{agentName}}\n",
+                "dev.tools": "# TOOLS — {{agentName}}\n",
+                "test.tools": "# TOOLS — {{agentName}}\n",
             },
             "files": [
                 {"path": "SOUL.md", "template": "soul"},
@@ -229,7 +235,7 @@ def test_scaffold_team_install_cron_off_skips_reconcile(tmp_path, capsys, fake_h
             "id": "tiny-team",
             "kind": "team",
             "agents": [{"role": "lead"}],
-            "templates": {"soul": "x"},
+            "templates": {"lead.soul": "x"},
             "files": [{"path": "SOUL.md", "template": "soul"}],
             "cronJobs": [
                 {"id": "loop", "schedule": "* * * * *", "message": "ping"}

@@ -9,6 +9,7 @@ result.
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -19,7 +20,22 @@ from hermes_recipes.scaffold_templates import render_team_md, render_tickets_md
 from hermes_recipes.template import render_template
 
 
+# Per-role scaffolds skip team-level files (those land at the team root).
+# Matches clawrecipes/src/handlers/team.ts:244, which only filters
+# `shared-context/`; we extend to `notes/` so team-level notes don't get
+# duplicated under every role dir.
 _TEAM_LEVEL_FILE_PREFIXES = ("shared-context/", "notes/")
+
+
+# Default per-role file set used when a team recipe has no ``files:`` block.
+# Matches clawrecipes/src/handlers/team.ts:226-234.
+_DEFAULT_ROLE_FILES: tuple[dict[str, Any], ...] = (
+    {"path": "SOUL.md", "template": "soul", "mode": "createOnly"},
+    {"path": "AGENTS.md", "template": "agents", "mode": "createOnly"},
+    {"path": "TOOLS.md", "template": "tools", "mode": "createOnly"},
+    {"path": "STATUS.md", "template": "status", "mode": "createOnly"},
+    {"path": "NOTES.md", "template": "notes", "mode": "createOnly"},
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +94,7 @@ def scaffold_agent_from_recipe(
     update: bool = False,
     file_path_filter: Optional[Iterable[str]] = None,
     file_path_exclude: Optional[Iterable[str]] = None,
+    tools_override: Optional[dict[str, Any]] = None,
 ) -> AgentScaffoldResult:
     """Render ``recipe.templates`` into files under *files_root_dir*.
 
@@ -90,6 +107,10 @@ def scaffold_agent_from_recipe(
         files OUT of per-role directories.
 
     The two filters compose — exclusion runs after inclusion.
+
+    *tools_override*: when provided, used as the agent's tools snippet
+    instead of ``recipe.get("tools")``. Team scaffolding passes the
+    per-agent ``tools:`` block here.
     """
     files_root = Path(files_root_dir)
     ensure_dir(files_root)
@@ -122,7 +143,12 @@ def scaffold_agent_from_recipe(
             ScaffoldedFile(path=target, wrote=result["wrote"], reason=result["reason"])
         )
 
-    tools = recipe.get("tools") if isinstance(recipe.get("tools"), dict) else None
+    if tools_override is not None:
+        tools = tools_override
+    elif isinstance(recipe.get("tools"), dict):
+        tools = recipe.get("tools")
+    else:
+        tools = None
     snippet = AgentConfigSnippet(
         id=agent_id,
         workspace=str(workspace_root_dir),
@@ -206,6 +232,60 @@ def _write_team_bootstrap_files(
         )
 
 
+def _write_role_continuity_files(
+    *, team_id: str, role: str, role_dir: Path, overwrite: bool
+) -> None:
+    """Drop the per-role MEMORY.md + memory/YYYY-MM-DD.md + agent-outputs/README.
+
+    Matches clawrecipes/src/handlers/team.ts:273-309 — these are unconditional
+    on every team scaffold and shouldn't depend on the recipe declaring the
+    files explicitly.
+    """
+    mode = "overwrite" if overwrite else "createOnly"
+    (role_dir / "memory").mkdir(parents=True, exist_ok=True)
+    (role_dir / "agent-outputs").mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+    write_file_safely(
+        role_dir / "MEMORY.md",
+        f"# MEMORY — {team_id} ({role})\n\nCurated long-term memory for this role.\n\n- (empty)\n",
+        mode,
+    )
+    write_file_safely(
+        role_dir / "memory" / f"{today}.md",
+        f"# {today} — {team_id} ({role})\n\n- (empty)\n",
+        mode,
+    )
+    write_file_safely(
+        role_dir / "agent-outputs" / "README.md",
+        (
+            f"# Agent outputs — {team_id} ({role})\n\n"
+            "Append-only artifacts/logs produced by this role.\n\n"
+            "Recommended:\n"
+            f"- One file per day (e.g. \"{today}.md\")\n"
+            "- Or one file per ticket (e.g. \"0175-run-detail-timeline.md\")\n"
+        ),
+        mode,
+    )
+
+
+def _role_scoped_files(
+    files: list[dict[str, Any]], role: str
+) -> list[dict[str, Any]]:
+    """Apply the ``<role>.<template>`` prefix rule from team.ts:241-248.
+
+    A file's ``template`` is rewritten to ``<role>.<template>`` unless the
+    name already contains a dot (which signals an explicitly-namespaced
+    template like ``sharedContext.ticketFlow``).
+    """
+    scoped: list[dict[str, Any]] = []
+    for spec in files:
+        template = spec["template"]
+        if "." not in template:
+            template = f"{role}.{template}"
+        scoped.append({**spec, "template": template})
+    return scoped
+
+
 def scaffold_team_from_recipe(
     recipe: RecipeFrontmatter,
     *,
@@ -215,9 +295,10 @@ def scaffold_team_from_recipe(
 ) -> TeamScaffoldResult:
     """Lay out a team workspace and render per-role files.
 
-    ``recipe.agents[]`` drives the role list; ``recipe.files[]`` is rendered
-    once at the team root (only ``shared-context/`` and ``notes/`` paths)
-    and again under each role dir (everything else).
+    ``recipe.agents[]`` drives the role list. Per-role files apply the
+    ``<role>.<template>`` lookup rule (see :func:`_role_scoped_files`); they
+    exclude ``shared-context/`` and ``notes/`` paths, which land at the team
+    root via the team-level slice.
     """
     base = Path(team_dir)
     ensure_team_directory_structure(base)
@@ -241,6 +322,12 @@ def scaffold_team_from_recipe(
     if not isinstance(agents, list):
         raise ValueError("recipe.agents must be an array")
 
+    # Resilience: if the recipe omits ``files:``, fall back to the canonical
+    # per-role file set so every role still gets SOUL/AGENTS/TOOLS/STATUS/NOTES.
+    base_files = _normalize_files(recipe.get("files")) or [
+        dict(f) for f in _DEFAULT_ROLE_FILES
+    ]
+
     for entry in agents:
         if not isinstance(entry, dict):
             raise ValueError("recipe.agents[] entries must be objects")
@@ -248,11 +335,19 @@ def scaffold_team_from_recipe(
         if not role:
             raise ValueError("recipe.agents[].role is required")
         role_name = str(entry.get("name") or role).strip()
-        agent_id = f"{team_id}-{role}"
+        agent_id = str(entry.get("agentId") or f"{team_id}-{role}").strip()
         role_dir = base / "roles" / role
 
+        # Build a scoped recipe whose files are role-prefixed; pass through to
+        # scaffold_agent_from_recipe unchanged.
+        scoped_recipe = {
+            **recipe,
+            "files": _role_scoped_files(base_files, role),
+        }
+        tools_override = entry.get("tools") if isinstance(entry.get("tools"), dict) else None
+
         result = scaffold_agent_from_recipe(
-            recipe,
+            scoped_recipe,
             agent_id=agent_id,
             agent_name=role_name,
             files_root_dir=role_dir,
@@ -267,21 +362,28 @@ def scaffold_team_from_recipe(
             },
             # Per-role dirs skip team-level prefixes (those land at the team root).
             file_path_exclude=_TEAM_LEVEL_FILE_PREFIXES,
+            tools_override=tools_override,
+        )
+        _write_role_continuity_files(
+            team_id=team_id, role=role, role_dir=role_dir, overwrite=overwrite
         )
         role_results[role] = result
         if result.snippet is not None:
             snippets.append(result.snippet)
 
-    # Write the team-level slice of files[] at the team root.
-    team_level = scaffold_agent_from_recipe(
-        recipe,
-        agent_id=team_id,
-        files_root_dir=base,
-        workspace_root_dir=base,
-        update=overwrite,
-        vars={"teamId": team_id, "teamDir": str(base)},
-        file_path_filter=_TEAM_LEVEL_FILE_PREFIXES,
-    )
+    # Write the team-level slice of files[] at the team root. No role prefix —
+    # team-level files use explicit dotted template names (e.g.
+    # ``sharedContext.priorities``).
+    if recipe.get("files"):
+        scaffold_agent_from_recipe(
+            recipe,
+            agent_id=team_id,
+            files_root_dir=base,
+            workspace_root_dir=base,
+            update=overwrite,
+            vars={"teamId": team_id, "teamDir": str(base)},
+            file_path_filter=_TEAM_LEVEL_FILE_PREFIXES,
+        )
 
     cron_jobs_declared = len(normalize_cron_jobs(recipe))
 

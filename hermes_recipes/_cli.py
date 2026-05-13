@@ -260,11 +260,20 @@ def _resolve_team_dir(args: argparse.Namespace) -> Path:
 
 
 def _resolve_recipe_dirs(args: argparse.Namespace) -> list[Path]:
+    """Order:
+      1. explicit ``--recipes-dir`` entries (CLI override)
+      2. ``<workspace_root>/../recipes`` (user-managed workspace recipes)
+      3. ``hermes_recipes/bundled_recipes/`` (ships with the package)
+    """
     dirs: list[Path] = []
     for raw in getattr(args, "recipes_dir", None) or []:
         dirs.append(Path(raw).expanduser())
     workspace_root = _resolve_workspace_root(args)
     dirs.append(workspace_root.parent / "recipes")
+    # Bundled recipes ship with the package.
+    bundled = Path(__file__).parent / "bundled_recipes"
+    if bundled.is_dir():
+        dirs.append(bundled)
     return dirs
 
 

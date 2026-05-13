@@ -1,5 +1,5 @@
 name: hermes_recipes
-version: 0.2.1
+version: 0.3.0
 description: "Markdown recipes that scaffold agents, teams, and file-first workflows on Hermes Agent (port of ClawRecipes)."
 author: ClawRecipes contributors
 kind: standalone

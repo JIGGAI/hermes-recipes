@@ -5,6 +5,55 @@ All notable changes to **hermes-recipes** will be documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-05-12
+
+Ships two real recipes out of the box. After install, `hermes recipes
+scaffold-team --recipe-id development-team --team-id my-team` (or
+`marketing-team`) lays out a working multi-role team workspace with no
+extra files to drop.
+
+### Added
+
+- **Bundled recipes** at `hermes_recipes/bundled_recipes/`:
+  - `development-team` — 5 roles (lead, dev, devops, test,
+    workflow-runner), 9 cron jobs (lead triage loop, per-role work loops,
+    workflow runner loop, PR watcher, testing-lane loop, 3-hour backup).
+    Same shape as upstream `@jiggai/recipes`, OpenClaw-isms swapped for
+    Hermes equivalents.
+  - `marketing-team` — 12 roles (lead, seo, copywriter, ads, social,
+    designer, analyst, video, compliance, offer, funnel, lifecycle), 13
+    cron jobs.
+- **Bundled-recipe discovery.** `recipe_loader` and the CLI's
+  `_resolve_recipe_dirs` now append the package's `bundled_recipes/`
+  directory after any explicit `--recipes-dir` flags and after
+  `<workspace_root>/../recipes`, so new users can scaffold a team with
+  zero workspace setup.
+- **Role-prefix template resolution** in `scaffold_team_from_recipe`.
+  Bare template names in `recipe.files[]` get rewritten to
+  `<role>.<template>` at per-role scaffold time; dotted names
+  (`sharedContext.priorities`) pass through unchanged. Matches the
+  upstream behavior in `clawrecipes/src/handlers/team.ts:241-248`.
+- **Per-agent `tools:` override.** Each entry in `recipe.agents[]` can
+  specify its own `tools:` block; the scaffolder uses it in place of the
+  recipe-level `tools:`.
+- **Per-role continuity bootstrap** (matches `team.ts:273-309`):
+  `MEMORY.md`, `memory/YYYY-MM-DD.md`, and `agent-outputs/README.md`
+  written unconditionally under every role dir.
+- **Default file set fallback.** When `recipe.files[]` is omitted, the
+  scaffolder falls back to `{SOUL,AGENTS,TOOLS,STATUS,NOTES}.md` so a
+  team recipe missing `files:` still produces usable role workspaces.
+
+### Notes
+
+- `[tool.setuptools.package-data]` includes `bundled_recipes/*.md` so
+  pip install ships the recipes alongside the code.
+- 6 new tests under `tests/test_bundled_recipes.py` cover discovery,
+  parse, no-residual-OpenClaw-refs, and end-to-end scaffold for both
+  bundled recipes.
+- Validated end-to-end against Hermes v0.13.0: development-team produces
+  a 71-file workspace, marketing-team produces 118 files, both via a
+  single `hermes recipes scaffold-team` call.
+
 ## [0.2.1] — 2026-05-12
 
 Docs + tooling polish. Same code surface as 0.2.0; the package now ships

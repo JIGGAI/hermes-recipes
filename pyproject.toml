@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-recipes"
-version = "0.2.1"
+version = "0.3.0"
 description = "Markdown recipes that scaffold agents, teams, and file-first workflows on Hermes Agent. Port of @jiggai/recipes (ClawRecipes)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,6 +38,9 @@ hermes_recipes = "hermes_recipes"
 
 [tool.setuptools.packages.find]
 include = ["hermes_recipes*"]
+
+[tool.setuptools.package-data]
+"hermes_recipes" = ["bundled_recipes/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
