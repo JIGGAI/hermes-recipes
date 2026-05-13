@@ -16,13 +16,77 @@ hermes recipes --workspace-root /tmp/test complete --team-id dev-team --ticket 1
 …lands a ticket in `workspace-dev-team/work/done/0001-….md` with
 `Status: done` and a `Completed:` timestamp.
 
-There are two install paths. Pick one.
+There are two install paths. **Method A is the recommended path** for most
+users — it makes the plugin behave like any bundled one, so `hermes plugins
+list` and `hermes plugins enable hermes_recipes` work normally.
 
 ---
 
-## Method A — Pip install (entry-point discovery)
+## Method A — Pip install + directory-plugin shim (recommended)
 
-**Best for:** most users. One command, no manual file management.
+**Best for:** anyone who wants the plugin to look first-class to Hermes's
+CLI. Drops a 2-file shim under `~/.hermes/plugins/` that points at the
+pip-installed package.
+
+```bash
+# 1. Clone the repo + pip install into the Hermes venv
+git clone https://github.com/JIGGAI/hermes-recipes.git
+~/.hermes/venv/bin/pip install ./hermes-recipes
+
+# 2. Drop the directory-plugin shim
+./hermes-recipes/scripts/install_dir_plugin.sh
+
+# 3. Enable via the normal CLI
+hermes plugins enable hermes_recipes
+
+# 4. Verify
+hermes plugins list                # hermes_recipes appears, status=enabled
+hermes recipes --help
+```
+
+The shim creates exactly two files under `~/.hermes/plugins/hermes_recipes/`:
+
+- `plugin.yaml` — copy of the package's manifest
+- `__init__.py` — one-line `from hermes_recipes import register` shim
+
+The package itself stays in Hermes's venv site-packages — the shim just
+makes Hermes's directory scanner notice it.
+
+For development (editable install — picks up edits without reinstalling):
+
+```bash
+~/.hermes/venv/bin/pip install -e ./hermes-recipes
+```
+
+To remove the shim:
+
+```bash
+./hermes-recipes/scripts/install_dir_plugin.sh --uninstall
+```
+
+(Or `rm -rf ~/.hermes/plugins/hermes_recipes/`.)
+
+To uninstall the package itself:
+
+```bash
+~/.hermes/venv/bin/pip uninstall hermes-recipes
+```
+
+### Why this isn't pure "drop files in a folder"
+
+A pure-directory install (no pip) would require copying the entire
+`hermes_recipes/` package into `~/.hermes/plugins/hermes_recipes/`. That
+works for simple plugins, but ours uses absolute imports
+(`from hermes_recipes.tickets import …`) and depends on PyYAML 6+ being
+present. Pip handles both — the directory shim is the lightest reliable
+hand-off.
+
+---
+
+## Method B — Pip install only (entry-point discovery, manual config edit)
+
+**Best for:** users who'd rather manage `plugins.enabled` themselves and
+don't need `hermes plugins list` to surface the plugin.
 
 ```bash
 ~/.hermes/venv/bin/pip install hermes-recipes      # production
@@ -49,91 +113,34 @@ If you see the `recipes` action tree, you're done. If argparse rejects
 `hermes_recipes` (or the pip install didn't land in Hermes's venv — see
 *Troubleshooting* below).
 
-### Why edit config.yaml by hand?
+### Why config.yaml needs an edit (and why Method A is easier)
 
 Hermes v0.13.0's `hermes plugins list` and `hermes plugins enable` only
 discover **directory plugins** (files under `~/.hermes/plugins/`). The
 runtime plugin loader DOES see pip entry-point plugins fine — but those
-two CLI commands won't surface them. So with Method A:
+two CLI commands won't surface them. So with Method B:
 
 - `hermes plugins list` → won't show `hermes_recipes` (UI gap)
 - `hermes plugins enable hermes_recipes` → fails with "not installed or bundled" (UI gap)
 - `hermes recipes …` → **works** (runtime sees it)
 
-Either edit `config.yaml` directly, or use Method B below to also get the
-nice CLI surface.
-
----
-
-## Method B — Pip install + directory-plugin shim
-
-**Best for:** users who want `hermes plugins list` / `hermes plugins enable`
-to work normally. Adds a 2-file shim under `~/.hermes/plugins/` that points
-at the pip-installed package.
-
-```bash
-# 1. Same pip install as Method A
-~/.hermes/venv/bin/pip install hermes-recipes
-
-# 2. Drop the shim
-/path/to/hermes-recipes/scripts/install_dir_plugin.sh
-
-# 3. Enable via the normal CLI
-hermes plugins enable hermes_recipes
-
-# 4. Verify
-hermes plugins list                # hermes_recipes appears, status=enabled
-hermes recipes --help
-```
-
-The shim creates exactly two files under `~/.hermes/plugins/hermes_recipes/`:
-
-- `plugin.yaml` — copy of the package's manifest
-- `__init__.py` — one-line `from hermes_recipes import register` shim
-
-The package itself stays in Hermes's venv site-packages — the shim just
-makes Hermes's directory scanner notice it.
-
-To remove the shim:
-
-```bash
-/path/to/hermes-recipes/scripts/install_dir_plugin.sh --uninstall
-```
-
-(Or `rm -rf ~/.hermes/plugins/hermes_recipes/`.)
-
-To uninstall the package itself:
-
-```bash
-~/.hermes/venv/bin/pip uninstall hermes-recipes
-```
-
-### Why this isn't pure "drop files in a folder"
-
-A pure-directory install (no pip) would require copying the entire
-`hermes_recipes/` package into `~/.hermes/plugins/hermes_recipes/`. That
-works for simple plugins, but ours uses absolute imports
-(`from hermes_recipes.tickets import …`) and depends on PyYAML 6+ being
-present. Pip handles both — the directory shim is the lightest reliable
-hand-off.
+Method A's shim adds the missing directory manifest so Hermes's CLI also
+sees it. Same code runs either way.
 
 ---
 
 ## Comparison
 
-| Property | Method A (pip + config edit) | Method B (pip + dir shim) |
+| Property | Method A (pip + dir shim) | Method B (pip only + config edit) |
 |---|---|---|
-| Steps after `pip install` | edit `config.yaml` | run `install_dir_plugin.sh` + `hermes plugins enable` |
-| `hermes plugins list` shows it | ❌ | ✅ |
-| `hermes plugins enable` works | ❌ | ✅ |
-| `hermes plugins disable` works | ❌ (delete from config) | ✅ |
+| Steps after `pip install` | run `install_dir_plugin.sh` + `hermes plugins enable` | edit `config.yaml` |
+| `hermes plugins list` shows it | ✅ | ❌ |
+| `hermes plugins enable` works | ✅ | ❌ |
+| `hermes plugins disable` works | ✅ | ❌ (delete from config) |
 | `hermes recipes …` works | ✅ | ✅ |
 | Manages dependencies | ✅ (via pip) | ✅ (via pip) |
-| Survives `~/.hermes/` reset | ✅ | ❌ (re-run install script) |
+| Survives `~/.hermes/` reset | ❌ (re-run install script) | ✅ |
 | Survives venv rebuild | ❌ (re-pip-install) | ❌ (both) |
-
-**Recommendation:** use Method A if you live in `config.yaml` anyway. Use
-Method B if you want the plugin to look first-class to Hermes's CLI.
 
 ---
 

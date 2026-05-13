@@ -35,7 +35,21 @@ hermes recipes complete --team-id my-team --ticket 1
 
 Hermes-recipes ships as a Python package. Pick one of two install paths.
 
-### Method A — pip + `config.yaml` edit (smallest footprint)
+### Method A — pip + directory-plugin shim (recommended)
+
+Lights up `hermes plugins list` and `hermes plugins enable` so the plugin
+behaves like any bundled one.
+
+```bash
+git clone https://github.com/JIGGAI/hermes-recipes.git
+~/.hermes/venv/bin/pip install ./hermes-recipes
+./hermes-recipes/scripts/install_dir_plugin.sh
+hermes plugins enable hermes_recipes
+```
+
+### Method B — pip only + `config.yaml` edit (smallest footprint)
+
+Skip the shim if you'd rather manage `plugins.enabled` yourself.
 
 ```bash
 ~/.hermes/venv/bin/pip install hermes-recipes
@@ -49,14 +63,8 @@ plugins:
     - hermes_recipes
 ```
 
-### Method B — pip + directory-plugin shim (so `hermes plugins` sees it)
-
-```bash
-git clone https://github.com/JIGGAI/hermes-recipes.git
-~/.hermes/venv/bin/pip install ./hermes-recipes
-./hermes-recipes/scripts/install_dir_plugin.sh
-hermes plugins enable hermes_recipes
-```
+(`hermes plugins list` won't show entry-point plugins in v0.13.0, so
+Method A is the better path unless you have a reason to avoid the shim.)
 
 ### Verify
 
