@@ -1,93 +1,196 @@
 # hermes-recipes
 
-A Hermes-native expansion of [ClawRecipes](https://github.com/JIGGAI/ClawRecipes) — markdown recipes that scaffold agents, teams, and file-first workflows on top of the [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime, alongside the existing OpenClaw plugin.
+**Markdown recipes that scaffold agents, teams, and file-first workflows on
+[Hermes Agent](https://github.com/NousResearch/hermes-agent).**
 
-## Why
+A single markdown recipe like `development-team.md` becomes a real workspace
+on disk:
 
-ClawRecipes is a ~5,200-LOC TypeScript plugin that ships on OpenClaw and stays the primary runtime there. This package expands the same primitives to Hermes — sibling to the OpenClaw plugin, not a replacement for it. Recipes authored once should work on either platform.
+- one **Hermes profile per role** (`team-lead`, `team-dev`, `team-test`, …)
+- a shared on-disk **team workspace** with `inbox/`, `outbox/`,
+  `shared-context/`, `notes/`, and **file-first ticket lanes**
+  (`work/backlog/`, `work/in-progress/`, `work/testing/`, `work/done/`)
+- recipe-declared **cron jobs** installed into Hermes's scheduler
+- a **JSON workflow runner** with LLM / tool / approval / handoff nodes,
+  per-agent queues, and approval bindings
 
-Hermes already ships an `openclaw-migration` skill that imports identity, memories, and command allowlists from `~/.openclaw`, but it does **not** cover the recipe DSL, the team / ticket workflow, or the JSON workflow runner. `hermes-recipes` fills that gap by reimplementing those pieces directly against Hermes's primitives (skills, plugins, kanban, cron, MCP), so a user running both platforms gets the same recipe surface on each.
-
-## What's being ported
-
-| ClawRecipes subsystem | Hermes target | Status |
-|---|---|---|
-| Recipe DSL (markdown + YAML frontmatter, `{{var}}` templates, `cronJobs`, `files`, `templates`) | Pure-Python reimplementation; no Hermes-API dependency | **Phase 1 — done** |
-| Scaffold (agents + teams), workspace layout, agent-config snippet writer | `~/.hermes/recipes/` + per-team workspace dirs; writes Hermes config entries | Phase 2 |
-| Tickets, lanes, dispatch/take/handoff/complete | Delegates to Hermes's existing kanban (`~/.hermes/kanban.db`); thin recipe-aware wrapper | Phase 3 |
-| Workflow runner (LLM/tool/approval/handoff/writeback nodes, queue, worker tick) | Python port of the deterministic state machine; node executor calls Hermes tools registry; approvals via Hermes messaging gateway | Phase 4 |
-| Cron declarations on recipes | Translated into Hermes cron jobs (`~/.hermes/cron/jobs.json`) via `cron.jobs` API | Phase 5 |
-| Outbound posting + media drivers (DALL-E, Kling, Runway, Luma, NanoBanana) | Reused as HTTP/SDK clients; auth via Hermes config | Phase 5 |
-| `openclaw recipes …` CLI tree | Exposed as Hermes plugin CLI: `hermes recipes …` | Phase 6 |
-
-See [`docs/MAPPING.md`](docs/MAPPING.md) for the full concept-mapping with file:line citations into both source trees.
-
-## Layout
-
-```
-hermes-recipes/
-├── pyproject.toml
-├── plugin.yaml                  # Hermes plugin manifest
-├── SKILL.md                     # also installable as a Skills-Hub skill
-├── README.md
-├── docs/
-│   └── MAPPING.md               # clawrecipes → hermes concept map
-├── hermes_recipes/
-│   ├── __init__.py              # register(ctx) — Hermes plugin entrypoint
-│   ├── constants.py
-│   ├── template.py              # {{var}} renderer (Phase 1)
-│   ├── recipe_frontmatter.py    # YAML frontmatter + cronJobs (Phase 1)
-│   ├── recipe_id.py             # id collision + auto-increment (Phase 1)
-│   └── recipe_lint.py           # team-recipe sanity lints (Phase 1)
-└── tests/
-    ├── test_template.py
-    ├── test_recipe_frontmatter.py
-    └── test_recipe_id.py
-```
-
-## Install (into a real Hermes Agent)
-
-Two install paths — pick one. Both validated end-to-end against Hermes
-v0.13.0.
-
-**Method A — pip + config edit** (simplest):
+Once installed, every action is accessible from the regular `hermes` CLI as a
+new `recipes` subcommand tree.
 
 ```bash
-~/.hermes/venv/bin/pip install /path/to/hermes-recipes
-# add hermes_recipes to plugins.enabled in ~/.hermes/config.yaml
-hermes recipes --help
+# Spin up a team
+hermes recipes scaffold-team --recipe-id development-team --team-id my-team \
+    --provision-profiles --install-cron on
+
+# Dispatch a request — creates an inbox entry + numbered backlog ticket
+hermes recipes dispatch --team-id my-team --request "Add OAuth login" --owner lead
+
+# Work the lifecycle: backlog → in-progress → testing → done
+hermes recipes take     --team-id my-team --ticket 1 --owner dev
+hermes recipes handoff  --team-id my-team --ticket 1
+hermes recipes complete --team-id my-team --ticket 1
 ```
 
-**Method B — pip + directory-plugin shim** (so `hermes plugins list` shows it):
+## Install
+
+Hermes-recipes ships as a Python package. Pick one of two install paths.
+
+### Method A — pip + `config.yaml` edit (smallest footprint)
 
 ```bash
-~/.hermes/venv/bin/pip install /path/to/hermes-recipes
-/path/to/hermes-recipes/scripts/install_dir_plugin.sh
+~/.hermes/venv/bin/pip install hermes-recipes
+```
+
+Then add this to `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  enabled:
+    - hermes_recipes
+```
+
+### Method B — pip + directory-plugin shim (so `hermes plugins` sees it)
+
+```bash
+git clone https://github.com/JIGGAI/hermes-recipes.git
+~/.hermes/venv/bin/pip install ./hermes-recipes
+./hermes-recipes/scripts/install_dir_plugin.sh
 hermes plugins enable hermes_recipes
+```
+
+### Verify
+
+```bash
 hermes recipes --help
 ```
 
-See [`docs/INSTALL.md`](docs/INSTALL.md) for the full comparison,
-troubleshooting, and the end-to-end smoke test.
+You should see the full `tickets`, `dispatch`, `scaffold`, `workflows`,
+… action tree. See [`docs/INSTALL.md`](docs/INSTALL.md) for the full
+comparison, troubleshooting, and an end-to-end smoke test validated
+against Hermes v0.13.0.
+
+## What you get
+
+Once installed, the plugin exposes these commands under `hermes recipes`:
+
+| Command | What it does |
+|---|---|
+| `scaffold <recipe-id> --agent-id …` | Render a single-agent recipe into `~/.hermes/recipes/workspace-<agentId>/`, optionally provision a Hermes profile and install cron jobs |
+| `scaffold-team <recipe-id> --team-id …` | Build a per-role team workspace + provision one Hermes profile per role |
+| `dispatch --team-id … --request "…"` | Turn a free-form request into an inbox entry + numbered backlog ticket |
+| `tickets --team-id …` | List tickets across the four lanes, JSON or table output |
+| `take` / `handoff` / `assign` / `move-ticket` / `complete` | File-first ticket transitions with `Owner:` / `Status:` patching |
+| `workflows run` | Enqueue a JSON workflow run from `shared-context/workflows/<file>.json` |
+| `workflows runner-once` / `runner-tick` | Scheduler claims queued runs, enqueues their next runnable nodes onto per-agent queues |
+| `workflows approve` / `resume` / `poll-approvals` | Approval lifecycle (human-in-the-loop steps) |
+| `workflows cleanup-queues` | Drop queue tasks whose runs are terminal or missing |
+
+Every ticket and workflow-run is a file on disk you can grep, version, and
+diff — no opaque database.
+
+## Recipe format
+
+```yaml
+---
+id: development-team
+kind: team
+name: Development Team
+agents:
+  - role: lead
+    name: Lead
+  - role: dev
+    name: Developer
+  - role: test
+    name: QA
+templates:
+  soul: |
+    # SOUL — {{agentName}} ({{role}})
+    I am part of team: {{teamId}}
+  agents: "# AGENTS — {{agentName}}\n"
+  tools:  "# TOOLS — {{agentName}}\n"
+files:
+  - path: SOUL.md
+    template: soul
+  - path: AGENTS.md
+    template: agents
+  - path: TOOLS.md
+    template: tools
+cronJobs:
+  - id: lead-triage
+    schedule: "*/30 7-23 * * 1-5"
+    timezone: "America/New_York"
+    agentId: "{{teamId}}-lead"
+    enabledByDefault: true
+    message: "Triage inbox, advance tickets, update notes/status.md."
+---
+```
+
+Drop that under `~/.hermes/recipes/` (or any directory passed via
+`--recipes-dir`) and `hermes recipes scaffold-team --recipe-id
+development-team --team-id my-team` produces:
+
+```
+~/.hermes/workspace-my-team/
+├── TEAM.md, TICKETS.md
+├── inbox/, outbox/, work/{backlog,in-progress,testing,done}/
+├── shared-context/{priorities,workflow-runs,workflow-queues}/
+├── notes/{plan,status,QA_CHECKLIST}.md
+└── roles/{lead,dev,test}/{SOUL,AGENTS,TOOLS}.md
+```
+
+…plus three new Hermes profiles (`my-team-lead`, `my-team-dev`,
+`my-team-test`) and one cron job per role.
+
+## Why a plugin and not just a skill
+
+Recipes need to do things that don't fit a single skill:
+
+- create durable named agents (Hermes profiles, one per role)
+- maintain on-disk ticket state across sessions
+- register a recurring scheduler that survives the chat loop
+- expose a CLI surface so humans + cron jobs can drive it
+
+Hermes's plugin system gives all four. Skills sit on top of this — agents
+can call `hermes recipes dispatch …` via the terminal tool from within any
+session.
+
+## Roadmap
+
+The big remaining piece is the **workflow worker + node executor** (Phase
+4c on the roadmap). The scheduler enqueues workflow tasks onto per-agent
+JSON queues today; node execution (LLM calls via `ctx.llm` / `PluginLlm`,
+tool calls via `tools.registry`, approval bindings via the gateway) is the
+next milestone. See [`ROADMAP.md`](ROADMAP.md) for the full plan plus a
+list of smaller follow-ups (remaining media drivers, slash commands,
+built-in recipe distribution, `hermes plugins list` upstream PR).
 
 ## Develop
 
 ```bash
+git clone https://github.com/JIGGAI/hermes-recipes.git
 cd hermes-recipes
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
 ```
 
-The test suite includes a `test_plugin_discovery.py` module that walks
-`importlib.metadata.entry_points(group="hermes_agent.plugins")` exactly the
-way Hermes does on startup and verifies `register(ctx)` lands without an
-actual Hermes install.
+233 tests cover the recipe DSL, scaffolding, ticket lifecycle, workflow
+scheduler, cron reconciliation, integrations, and the Hermes plugin
+registration contract (which simulates `importlib.metadata` the exact way
+Hermes loads plugins on startup).
 
-## Source attribution
+## Origin
 
-This is a port of [`@jiggai/recipes`](https://github.com/JIGGAI/ClawRecipes) (Apache-2.0). The TS source lives at `../clawrecipes/`. Where this package translates a specific TS file, the Python module's header points back to its origin.
+Ported from [`@jiggai/recipes`](https://github.com/JIGGAI/ClawRecipes) — a
+TypeScript OpenClaw plugin that's been running this same recipe + team +
+workflow model for over a year. `hermes-recipes` is the Hermes-native
+sibling: same primitives, same on-disk layout, fresh Python implementation
+against Hermes's plugin / profile / cron APIs. The OpenClaw plugin remains
+first-class on OpenClaw — this expands the surface to Hermes.
+
+See [`docs/MAPPING.md`](docs/MAPPING.md) for the full clawrecipes → Hermes
+concept map with file-and-line citations into both source trees.
 
 ## License
 
-Apache-2.0 (matches upstream ClawRecipes).
+[Apache-2.0](LICENSE) — matches upstream ClawRecipes.
