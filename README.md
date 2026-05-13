@@ -2,8 +2,6 @@
 
 A Hermes-native expansion of [ClawRecipes](https://github.com/JIGGAI/ClawRecipes) — markdown recipes that scaffold agents, teams, and file-first workflows on top of the [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime, alongside the existing OpenClaw plugin.
 
-> **Status: early port in progress.** Phase 1 (recipe DSL parser) is implemented. Phases 2–6 are scaffolded but not yet written.
-
 ## Why
 
 ClawRecipes is a ~5,200-LOC TypeScript plugin that ships on OpenClaw and stays the primary runtime there. This package expands the same primitives to Hermes — sibling to the OpenClaw plugin, not a replacement for it. Recipes authored once should work on either platform.
